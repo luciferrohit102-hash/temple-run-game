@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Temple Run</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1b1209; overflow: hidden; font-family: sans-serif; touch-action: none; }
+  canvas { display: block; margin: 0 auto; background: #2d1d0e; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+function resize() {
+  canvas.height = window.innerHeight;
+  canvas.width = Math.min(window.innerWidth, canvas.height * 0.6);
+}
+resize();
+window.addEventListener('resize', resize);
+
+const LANES = 3;
+let state, player, obstacles, coins, score, coinCount, speed, spawnTimer, best = 0;
+
+function reset() {
+  player = { lane: 1, x: 1, y: 0, vy: 0, sliding: 0 };
+  obstacles = []; coins = [];
+  score = 0; coinCount = 0; speed = 6; spawnTimer = 0;
+  state = 'playing';
+}
+reset(); state = 'start';
+
+function laneX(l) { return canvas.width * (0.2 + 0.3 * l); }
+
+function moveLeft() { if (state === 'playing' && player.lane > 0) player.lane--; }
+function moveRight() { if (state === 'playing' && player.lane < LANES - 1) player.lane++; }
+function jump() { if (state === 'playing' && player.y === 0) player.vy = 16; }
+function slide() { if (state === 'playing' && player.y === 0) player.sliding = 30; }
+function startOrRestart() { if (state !== 'playing') reset(); }
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') moveLeft();
+  else if (e.key === 'ArrowRight') moveRight();
+  else if (e.key === 'ArrowUp' || e.key === ' ') { startOrRestart(); jump(); }
+  else if (e.key === 'ArrowDown') slide();
+});
+
+let tx = 0, ty = 0;
+canvas.addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; startOrRestart(); });
+canvas.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - tx;
+  const dy = e.changedTouches[0].clientY - ty;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    if (dx > 30) moveRight(); else if (dx < -30) moveLeft();
+  } else {
+    if (dy < -30) jump(); else if (dy > 30) slide();
+  }
+});
+
+function spawn() {
+  const lane = Math.floor(Math.random() * LANES);
+  const r = Math.random();
+  if (r < 0.45) obstacles.push({ lane, y: -60, type: 'rock' });
+  else if (r < 0.65) obstacles.push({ lane, y: -60, type: 'beam' });
+  else for (let i = 0; i < 4; i++) coins.push({ lane, y: -60 - i * 50 });
+}
+
+function update() {
+  if (state !== 'playing') return;
+  speed += 0.003;
+  score += speed * 0.05;
+  spawnTimer++;
+  if (spawnTimer > Math.max(25, 60 - speed * 2)) { spawn(); spawnTimer = 0; }
+
+  player.x += (player.lane - player.x) * 0.25;
+  if (player.y > 0 || player.vy > 0) {
+    player.y += player.vy; player.vy -= 0.9;
+    if (player.y <= 0) { player.y = 0; player.vy = 0; }
+  }
+  if (player.sliding > 0) player.sliding--;
+
+  const py = canvas.height * 0.78;
+  obstacles.forEach(o => o.y += speed);
+  coins.forEach(c => c.y += speed);
+
+  for (const o of obstacles) {
+    if (o.lane === player.lane && Math.abs(o.y - py) < 30) {
+      if (o.type === 'rock' && player.y < 30) state = 'over';
+      if (o.type === 'beam' && player.sliding === 0) state = 'over';
+    }
+  }
+  coins = coins.filter(c => {
+    if (c.lane === player.lane && Math.abs(c.y - py) < 30 && player.y < 40) { coinCount++; return false; }
+    return c.y < canvas.height + 50;
+  });
+  obstacles = obstacles.filter(o => o.y < canvas.height + 50);
+  if (state === 'over') best = Math.max(best, Math.floor(score));
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#3a2814';
+  ctx.fillRect(canvas.width * 0.05, 0, canvas.width * 0.9, canvas.height);
+  ctx.strokeStyle = '#6b4a24'; ctx.lineWidth = 2;
+  for (let l = 1; l < LANES; l++) {
+    const x = canvas.width * (0.05 + 0.3 * l);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  const py = canvas.height * 0.78;
+
+  obstacles.forEach(o => {
+    const x = laneX(o.lane);
+    if (o.type === 'rock') { ctx.fillStyle = '#777'; ctx.fillRect(x - 28, o.y - 25, 56, 50); }
+    else { ctx.fillStyle = '#a0522d'; ctx.fillRect(x - 40, o.y - 50, 80, 20); }
+  });
+  ctx.fillStyle = '#ffd700';
+  coins.forEach(c => { ctx.beginPath(); ctx.arc(laneX(c.lane), c.y, 10, 0, Math.PI * 2); ctx.fill(); });
+
+  const px = laneX(0) + (laneX(1) - laneX(0)) * player.x;
+  const h = player.sliding > 0 ? 25 : 55;
+  ctx.fillStyle = '#e8a33d';
+  ctx.fillRect(px - 18, py - player.y - h / 2, 36, h);
+
+  ctx.fillStyle = '#fff'; ctx.font = '20px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Score: ' + Math.floor(score), 15, 30);
+  ctx.fillText('Coins: ' + coinCount, 15, 58);
+  ctx.textAlign = 'right'; ctx.fillText('Best: ' + best, canvas.width - 15, 30);
+
+  if (state !== 'playing') {
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+    ctx.font = '32px sans-serif';
+    ctx.fillText(state === 'start' ? 'Temple Run' : 'Game Over', canvas.width / 2, canvas.height / 2 - 20);
+    ctx.font = '18px sans-serif';
+    ctx.fillText('Tap or press Space to play', canvas.width / 2, canvas.height / 2 + 20);
+  }
+}
+
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>
