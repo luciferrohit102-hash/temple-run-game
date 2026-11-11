@@ -22,7 +22,7 @@ resize();
 window.addEventListener('resize', resize);
 
 const LANES = 3;
-let state, player, obstacles, coins, score, coinCount, speed, spawnTimer, best = 0;
+let state, player, obstacles, coins, score, coinCount, speed, spawnTimer, frame = 0, best = 0;
 
 function reset() {
   player = { lane: 1, x: 1, y: 0, vy: 0, sliding: 0 };
@@ -68,6 +68,7 @@ function spawn() {
 }
 
 function update() {
+  frame++;
   if (state !== 'playing') return;
   speed += 0.003;
   score += speed * 0.05;
@@ -99,6 +100,67 @@ function update() {
   if (state === 'over') best = Math.max(best, Math.floor(score));
 }
 
+function limb(x1, y1, x2, y2, color, w) {
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+}
+
+function drawCharacter(cx, baseY) {
+  // cx = center x, baseY = feet level
+  const running = state === 'playing' && player.y === 0 && player.sliding === 0;
+  const swing = running ? Math.sin(frame * 0.4) * 14 : 0;
+  const airborne = player.y > 0;
+  const sliding = player.sliding > 0;
+
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(cx, baseY + 4, 20 - Math.min(player.y / 6, 10), 6, 0, 0, Math.PI * 2); ctx.fill();
+
+  const y = baseY - player.y;
+
+  if (sliding) {
+    // lying low on the ground
+    limb(cx - 22, y - 12, cx + 14, y - 12, '#2b5fa8', 12);   // body
+    limb(cx + 14, y - 12, cx + 30, y - 6, '#2b5fa8', 8);       // legs forward
+    ctx.fillStyle = '#f2c28b';
+    ctx.beginPath(); ctx.arc(cx - 28, y - 16, 10, 0, Math.PI * 2); ctx.fill(); // head
+    ctx.fillStyle = '#4a2c0a';
+    ctx.beginPath(); ctx.arc(cx - 30, y - 20, 10, Math.PI, Math.PI * 2); ctx.fill(); // hair
+    return;
+  }
+
+  const hip = y - 28;
+  const shoulder = y - 54;
+
+  // legs
+  if (airborne) {
+    limb(cx, hip, cx - 12, y - 8, '#3b2a6b', 7);
+    limb(cx, hip, cx + 12, y - 14, '#3b2a6b', 7);
+  } else {
+    limb(cx, hip, cx - swing, y, '#3b2a6b', 7);
+    limb(cx, hip, cx + swing, y, '#3b2a6b', 7);
+  }
+  // arms
+  if (airborne) {
+    limb(cx, shoulder + 4, cx - 18, shoulder - 14, '#f2c28b', 6);
+    limb(cx, shoulder + 4, cx + 18, shoulder - 14, '#f2c28b', 6);
+  } else {
+    limb(cx, shoulder + 4, cx + swing, shoulder + 24, '#f2c28b', 6);
+    limb(cx, shoulder + 4, cx - swing, shoulder + 24, '#f2c28b', 6);
+  }
+  // body / shirt
+  limb(cx, hip, cx, shoulder, '#d9442b', 16);
+  // head
+  ctx.fillStyle = '#f2c28b';
+  ctx.beginPath(); ctx.arc(cx, shoulder - 12, 11, 0, Math.PI * 2); ctx.fill();
+  // hair / cap
+  ctx.fillStyle = '#4a2c0a';
+  ctx.beginPath(); ctx.arc(cx, shoulder - 14, 11, Math.PI, Math.PI * 2); ctx.fill();
+  // eye
+  ctx.fillStyle = '#000';
+  ctx.beginPath(); ctx.arc(cx + 4, shoulder - 12, 1.8, 0, Math.PI * 2); ctx.fill();
+}
+
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#3a2814';
@@ -119,9 +181,7 @@ function draw() {
   coins.forEach(c => { ctx.beginPath(); ctx.arc(laneX(c.lane), c.y, 10, 0, Math.PI * 2); ctx.fill(); });
 
   const px = laneX(0) + (laneX(1) - laneX(0)) * player.x;
-  const h = player.sliding > 0 ? 25 : 55;
-  ctx.fillStyle = '#e8a33d';
-  ctx.fillRect(px - 18, py - player.y - h / 2, 36, h);
+  drawCharacter(px, py);
 
   ctx.fillStyle = '#fff'; ctx.font = '20px sans-serif'; ctx.textAlign = 'left';
   ctx.fillText('Score: ' + Math.floor(score), 15, 30);
